@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:community_material_icon/community_material_icon.dart';
 import 'package:file_picker/file_picker.dart';
@@ -202,18 +203,27 @@ class _FormBuilderFilePickerState
     FormFieldState<List<PlatformFile>?> field,
     FileType fileType,
   ) async {
-    FilePickerResult? resultList;
+    List<PlatformFile> pickedFiles = [];
 
     try {
-      resultList = await FilePicker.pickFiles(
-        type: fileType,
-        allowedExtensions: widget.allowedExtensions,
-        compressionQuality: widget.compressionQuality,
-        onFileLoading: widget.onFileLoading,
-        allowMultiple: widget.allowMultiple,
-        withData: widget.withData,
-        withReadStream: widget.withReadStream,
-      );
+      if (widget.allowMultiple) {
+        pickedFiles = await FilePicker.pickFiles(
+          type: fileType,
+          allowedExtensions: widget.allowedExtensions,
+          compressionQuality: widget.compressionQuality,
+          onFileLoading: widget.onFileLoading,
+        );
+      } else {
+        final single = await FilePicker.pickFile(
+          type: fileType,
+          allowedExtensions: widget.allowedExtensions,
+          compressionQuality: widget.compressionQuality,
+          onFileLoading: widget.onFileLoading,
+        );
+        if (single != null) {
+          pickedFiles = [single];
+        }
+      }
     } on Exception catch (e) {
       debugPrint(e.toString());
     }
@@ -222,8 +232,8 @@ class _FormBuilderFilePickerState
     // setState to update our non-existent appearance.
     if (!mounted) return;
 
-    if (resultList != null) {
-      setState(() => _files = [..._files, ...resultList!.files]);
+    if (pickedFiles.isNotEmpty) {
+      setState(() => _files = [..._files, ...pickedFiles]);
       // TODO: Pick only remaining number
       field.didChange(_files);
     }
@@ -281,15 +291,34 @@ class _FormBuilderFilePickerState
                                 files[index].extension!.toLowerCase(),
                               ) &&
                               widget.previewImages)
-                          ? widget.withData
-                                ? Image.memory(
-                                    files[index].bytes!,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Image.file(
+                          ? (files[index].path != null
+                                ? Image.file(
                                     File(files[index].path!),
                                     fit: BoxFit.cover,
                                   )
+                                : FutureBuilder<Uint8List>(
+                                    future: files[index].readAsBytes(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData &&
+                                          snapshot.data!.isNotEmpty) {
+                                        return Image.memory(
+                                          snapshot.data!,
+                                          fit: BoxFit.cover,
+                                        );
+                                      }
+                                      return Container(
+                                        alignment: Alignment.center,
+                                        color: theme.primaryColor,
+                                        child: Icon(
+                                          getIconData(
+                                            files[index].extension ?? '',
+                                          ),
+                                          color: Colors.white,
+                                          size: 56,
+                                        ),
+                                      );
+                                    },
+                                  ))
                           : Container(
                               alignment: Alignment.center,
                               color: theme.primaryColor,
